@@ -33,22 +33,23 @@ def generate_new_content(original_text, events_description):
     current_month = datetime.now().strftime("%B %Y")
     
     prompt = f"""
-    You are tasked with rewriting the Dahlia Wood newsletter while maintaining its original style and structure.
+    You are tasked with creating a new Dahlia Wood newsletter while maintaining the style and structure of the publication.
     
-    Original newsletter content:
+    An example newsletter content:
     {original_text}
     
-    Recent events to incorporate:
+    Events to incorporate in new newsletter:
     {events_description}
     
     Important instructions:
     1. Update all references to the publication month/date to {current_month}
     2. Maintain the same tone, style, and structure as the original
     3. Preserve any headers, footers, and section titles
-    4. Incorporate the new events naturally into the existing sections
+    4. Create the new content based around the provided events, in the style of the preceding. 
     5. Ensure all branding elements and formatting remain consistent
+    6. Do not duplicate the events of the previous month.
     
-    Please rewrite the newsletter content following these instructions.
+    Please create the new month's newsletter content following these instructions.
     """
     
     response = co.generate(
