@@ -31,6 +31,24 @@ def process_image(image_file):
     image.save(buffered, format=image.format)
     return base64.b64encode(buffered.getvalue()).decode('utf-8')
 
+def extract_text_from_response(response):
+    """
+    Extract plain text content from Claude's response, handling different response formats.
+    """
+    if hasattr(response, 'content'):
+        if isinstance(response.content, list):
+            # Handle case where content is a list of content blocks
+            for block in response.content:
+                if hasattr(block, 'text'):
+                    return block.text
+                elif isinstance(block, dict) and 'text' in block:
+                    return block['text']
+        elif hasattr(response.content, 'text'):
+            return response.content.text
+        else:
+            return str(response.content)
+    return str(response)
+
 def generate_new_content(original_text, events_description, images):
     """
     Generate new newsletter content using Claude API, incorporating image descriptions
@@ -71,7 +89,7 @@ Important instructions:
 7. The newsletter should be dated {current_month}
 8. When referencing images, use natural language that will make sense when the images are placed in the final layout (e.g., "As shown in the photograph above...")
 
-Please write the complete new newsletter content following these instructions."""
+Please write the complete new newsletter content following these instructions. Provide only the newsletter text content without any meta information or formatting marks."""
 
     # Combine text content with image descriptions for the API call
     messages = [
@@ -99,13 +117,13 @@ Please write the complete new newsletter content following these instructions.""
         messages=messages
     )
     
-    return response.content
+    return extract_text_from_response(response)
 
 def main():
     st.set_page_config(page_title="Dahlia Wood Newsletter Generator")
     st.title("Dahlia Wood Newsletter Generator")
     
-    # Initialize session state
+    # Initialize session state for content and clipboard
     if 'generated_content' not in st.session_state:
         st.session_state.generated_content = None
     
@@ -146,27 +164,49 @@ def main():
             with st.spinner("Analyzing images and generating newsletter content..."):
                 try:
                     original_text = extract_text_from_pdf(uploaded_pdf)
-                    st.session_state.generated_content = generate_new_content(
+                    generated_content = generate_new_content(
                         original_text, 
                         events_description, 
                         uploaded_images
                     )
+                    st.session_state.generated_content = generated_content
                 except Exception as e:
                     st.error(f"Error generating content: {str(e)}")
         
         # Display content preview if available
         if st.session_state.generated_content:
             st.subheader("Generated Newsletter Content")
-            edited_content = st.text_area(
-                "Review and Edit Content",
-                value=st.session_state.generated_content,
-                height=400
-            )
             
-            # Add copy button for convenience
-            if st.button("Copy to Clipboard"):
-                st.write("Content copied to clipboard!")
-                st.session_state.clipboard = edited_content
+            # Create columns for the text area and copy button
+            col1, col2 = st.columns([4, 1])
+            
+            with col1:
+                edited_content = st.text_area(
+                    "Review and Edit Content",
+                    value=st.session_state.generated_content,
+                    height=400
+                )
+            
+            with col2:
+                # Implement clipboard functionality using JavaScript
+                st.markdown("""
+                    <script>
+                    function copyToClipboard() {
+                        const textArea = document.querySelector('textarea[aria-label="Review and Edit Content"]');
+                        textArea.select();
+                        document.execCommand('copy');
+                    }
+                    </script>
+                    """, unsafe_allow_html=True)
+                
+                if st.button("Copy to Clipboard", key="copy_button"):
+                    st.write(
+                        """
+                        <script>copyToClipboard();</script>
+                        Content copied!
+                        """,
+                        unsafe_allow_html=True
+                    )
 
 if __name__ == "__main__":
     main()
