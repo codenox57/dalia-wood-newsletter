@@ -119,92 +119,103 @@ def create_new_pdf(original_pdf, new_text, new_images):
     """
     Create a new PDF with updated content and images, implementing proper text wrapping.
     """
-    # Open the original PDF
-    doc = fitz.open(stream=original_pdf.read(), filetype="pdf")
-    
-    # Create a new PDF document
-    new_doc = fitz.open()
-    
-    # Process each page
-    for page_num in range(len(doc)):
-        # Copy the original page
-        page = doc[page_num]
-        new_page = new_doc.new_page(width=page.rect.width, height=page.rect.height)
+    try:
+        # Open the original PDF
+        doc = fitz.open(stream=original_pdf.read(), filetype="pdf")
         
-        # Clear existing content while preserving formatting
-        new_page.clean_contents()
+        # Create a new PDF document
+        new_doc = fitz.open()
         
-        # Calculate image positions and create image rectangles
-        image_rects = []
-        if new_images and page_num < len(new_images):
-            img = Image.open(new_images[page_num])
-            # Scale image while maintaining aspect ratio
-            img_width = 300  # Desired width
-            aspect_ratio = img.height / img.width
-            img_height = int(img_width * aspect_ratio)
+        # Process each page
+        for page_num in range(len(doc)):
+            # Copy the original page
+            page = doc[page_num]
+            new_page = new_doc.new_page(width=page.rect.width, height=page.rect.height)
             
-            # Position image in upper right
-            img_rect = fitz.Rect(
-                new_page.rect.width - img_width - 50,  # 50px margin from right
-                50,  # 50px margin from top
-                new_page.rect.width - 50,
-                50 + img_height
-            )
-            image_rects.append(img_rect)
+            # Clear existing content while preserving formatting
+            new_page.clean_contents()
             
-            # Insert image
-            img_bytes = io.BytesIO()
-            img.save(img_bytes, format='PNG')
-            img_bytes = img_bytes.getvalue()
-            new_page.insert_image(img_rect, stream=img_bytes)
-        
-        # Calculate text blocks around images
-        text_blocks = calculate_text_blocks(new_page.rect, image_rects)
-        
-        # Split text into paragraphs
-        paragraphs = new_text.split('\n\n')
-        
-        # Insert text into available blocks
-        current_block = 0
-        current_y = text_blocks[0].y0
-        font_size = 11
-        line_height = font_size * 1.2
-        
-        for paragraph in paragraphs:
-            if current_block >= len(text_blocks):
-                break
+            # Calculate image positions and create image rectangles
+            image_rects = []
+            if new_images and page_num < len(new_images):
+                img = Image.open(new_images[page_num])
+                # Scale image while maintaining aspect ratio
+                img_width = 300  # Desired width
+                aspect_ratio = img.height / img.width
+                img_height = int(img_width * aspect_ratio)
                 
-            text_block = text_blocks[current_block]
+                # Position image in upper right
+                img_rect = fitz.Rect(
+                    new_page.rect.width - img_width - 50,  # 50px margin from right
+                    50,  # 50px margin from top
+                    new_page.rect.width - 50,
+                    50 + img_height
+                )
+                image_rects.append(img_rect)
+                
+                # Insert image
+                img_bytes = io.BytesIO()
+                img.save(img_bytes, format='PNG')
+                img_bytes = img_bytes.getvalue()
+                new_page.insert_image(img_rect, stream=img_bytes)
             
-            # Calculate if paragraph fits in current block
-            text_height = len(paragraph.split('\n')) * line_height
-            if current_y + text_height > text_block.y1:
-                current_block += 1
+            # Calculate text blocks around images
+            text_blocks = calculate_text_blocks(new_page.rect, image_rects)
+            
+            # Split text into paragraphs
+            paragraphs = new_text.split('\n\n')
+            
+            # Insert text into available blocks
+            current_block = 0
+            current_y = text_blocks[0].y0
+            font_size = 11
+            line_height = font_size * 1.2
+            
+            for paragraph in paragraphs:
                 if current_block >= len(text_blocks):
                     break
+                    
                 text_block = text_blocks[current_block]
-                current_y = text_block.y0
-            
-            # Insert paragraph
-            new_page.insert_text(
-                point=(text_block.x0, current_y),
-                text=paragraph,
-                fontsize=font_size,
-                fontname="helv",
-                color=(0, 0, 0)
-            )
-            current_y += text_height + font_size  # Add space between paragraphs
+                
+                # Calculate if paragraph fits in current block
+                text_height = len(paragraph.split('\n')) * line_height
+                if current_y + text_height > text_block.y1:
+                    current_block += 1
+                    if current_block >= len(text_blocks):
+                        break
+                    text_block = text_blocks[current_block]
+                    current_y = text_block.y0
+                
+                # Insert paragraph
+                new_page.insert_text(
+                    point=(text_block.x0, current_y),
+                    text=paragraph,
+                    fontsize=font_size,
+                    fontname="helv",
+                    color=(0, 0, 0)
+                )
+                current_y += text_height + font_size  # Add space between paragraphs
+        
+        # Save to bytes buffer
+        output_buffer = io.BytesIO()
+        new_doc.save(output_buffer)
+        output_buffer.seek(0)
+        
+        return output_buffer
     
-    # Save to bytes buffer
-    output_buffer = io.BytesIO()
-    new_doc.save(output_buffer)
-    output_buffer.seek(0)
-    
-    return output_buffer
+    except Exception as e:
+        st.error(f"Error creating PDF: {str(e)}")
+        return None
 
 def main():
     st.set_page_config(page_title="Dahlia Wood Newsletter Generator")
     st.title("Dahlia Wood Newsletter Generator")
+    
+    # Initialize session state
+    if 'generated_content' not in st.session_state:
+        st.session_state.generated_content = None
+    if 'pdf_generated' not in st.session_state:
+        st.session_state.pdf_generated = False
     
     # Add current month display
     current_month = datetime.now().strftime("%B %Y")
@@ -218,34 +229,43 @@ def main():
     events_description = st.text_area("Describe Recent Events to Include")
     
     if uploaded_pdf is not None:
-        # Extract text from original PDF
-        original_text = extract_text_from_pdf(uploaded_pdf)
-        
+        # Generate content button
         if st.button("Generate New Content"):
             with st.spinner("Generating new content..."):
-                # Generate new content using Cohere
-                new_content = generate_new_content(original_text, events_description)
-                
-                # Display new content for review
-                st.subheader("Generated Content Preview")
-                st.text_area("Review and Edit Content", new_content, height=300)
-                
-                # Button to create final PDF
-                if st.button("Create Final PDF"):
-                    with st.spinner("Creating PDF..."):
-                        # Reset file pointer
-                        uploaded_pdf.seek(0)
-                        
-                        # Create new PDF
-                        pdf_buffer = create_new_pdf(uploaded_pdf, new_content, uploaded_images)
-                        
-                        # Offer download
-                        st.download_button(
-                            label="Download New Newsletter",
-                            data=pdf_buffer,
-                            file_name=f"dahlia_wood_newsletter_{current_month.lower().replace(' ', '_')}.pdf",
-                            mime="application/pdf"
-                        )
+                original_text = extract_text_from_pdf(uploaded_pdf)
+                st.session_state.generated_content = generate_new_content(original_text, events_description)
+                st.session_state.pdf_generated = False
+        
+        # Display content preview if available
+        if st.session_state.generated_content:
+            st.subheader("Generated Content Preview")
+            edited_content = st.text_area(
+                "Review and Edit Content",
+                value=st.session_state.generated_content,
+                height=300
+            )
+            
+            # Create PDF button
+            if st.button("Create Final PDF"):
+                with st.spinner("Creating PDF..."):
+                    # Reset file pointer
+                    uploaded_pdf.seek(0)
+                    
+                    # Create new PDF
+                    pdf_buffer = create_new_pdf(uploaded_pdf, edited_content, uploaded_images)
+                    
+                    if pdf_buffer:
+                        st.session_state.pdf_buffer = pdf_buffer
+                        st.session_state.pdf_generated = True
+            
+            # Only show download button if PDF was generated successfully
+            if st.session_state.pdf_generated and hasattr(st.session_state, 'pdf_buffer'):
+                st.download_button(
+                    label="Download New Newsletter",
+                    data=st.session_state.pdf_buffer,
+                    file_name=f"dahlia_wood_newsletter_{current_month.lower().replace(' ', '_')}.pdf",
+                    mime="application/pdf"
+                )
 
 if __name__ == "__main__":
     main()
